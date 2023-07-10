@@ -3,22 +3,19 @@ const fs = require('fs');
 const path = require('path')
 const formData = require('form-data');
 const { JSDOM } = require("jsdom");
-const Table = require('cli-table3');
 var { constants } = require('./constants');
 const { getLastCommit } = require('./git');
-
-var INTERVAL = 2000
-const MAX_INTERVAL = 512000
+const { shortPolling } = require('./polling');
 
 async function sendDoM(storybookUrl, stories, storybookConfig, options) {
     const createBrowser = require('browserless')
     const browser = createBrowser()
 
-    if (!fs.existsSync('doms')){
+    if (!fs.existsSync('doms')) {
         fs.mkdir('doms', (err) => {
             if (err) {
                 console.error(err);
-                process.exit(1);
+                process.exit(constants.ERROR_CATCHALL);
             }
         });
     }
@@ -33,12 +30,12 @@ async function sendDoM(storybookUrl, stories, storybookConfig, options) {
         clone = new JSDOM(html);
 
         // Serialize DOM
-        for(element of clone.window.document.querySelectorAll('img')) {
+        for (element of clone.window.document.querySelectorAll('img')) {
             let image = new URL(element.getAttribute('src'), storybookUrl).href;
             let format = path.extname(image).replace(/^./, '');
             format = format === 'svg' ? 'svg+xml' : format
             let imageAsBase64 = await getBase64(image);
-            element.setAttribute('src', 'data:image/'+format+';base64,'+imageAsBase64);
+            element.setAttribute('src', 'data:image/' + format + ';base64,' + imageAsBase64);
         }
         await serializeCSSOM(dom, clone);
 
@@ -53,27 +50,36 @@ async function sendDoM(storybookUrl, stories, storybookConfig, options) {
     await browser.close()
 
     // Create form
-    // let commit = await getLastCommit();
+    let commit = await getLastCommit();
     const form = new formData();
     for (const [storyId, storyInfo] of Object.entries(stories)) {
         const file = fs.readFileSync('doms/' + storyId + '.html');
-        form.append('files', file, storyInfo.kind + ': ' + storyInfo.name + '.html');
+        let title = storyInfo.kind || storyInfo.title;
+        title = title ? title.replaceAll('/', '#') + ': ' : '';
+        filename = title + storyInfo.name;
+        form.append('files', file, filename + '.html');
     }
     form.append('resolution', storybookConfig.resolutions);
     form.append('browser', storybookConfig.browsers);
     form.append('projectToken', process.env.PROJECT_TOKEN);
-    // form.append('branch', commit.branch);
-    // form.append('commitId', commit.shortHash);
-    // form.append('commitAuthor', commit.author.name);
-    // form.append('commitMessage', commit.subject);
+    form.append('branch', commit.branch);
+    form.append('commitId', commit.shortHash);
+    form.append('commitAuthor', commit.author.name);
+    form.append('commitMessage', commit.subject);
+
+    githubURL = process.env.GITHUB_URL
+    if (githubURL) {
+        form.append('githubURL', githubURL);
+    }
 
     // Send DOM to render API
     await axios.post(constants[options.env].RENDER_API_URL, form, {
         headers: {
             ...form.getHeaders()
         }
-        })
+    })
         .then(async function (response) {
+            console.log('[smartui] Build URL: ', response.data.buildURL);
             console.log('[smartui] Build in progress...');
             await shortPolling(response.data.buildId, 0, options);
         })
@@ -82,99 +88,87 @@ async function sendDoM(storybookUrl, stories, storybookConfig, options) {
                 console.log('[smartui] Build failed: Error: ', error.response.data.message);
             } else {
                 console.log('[smartui] Build failed: Error: ', error.message);
-            }       
+            }
         });
-    
-    fs.rm('doms', {recursive: true}, (err) => {
+
+    fs.rm('doms', { recursive: true }, (err) => {
         if (err) {
             return console.error(err);
         }
     });
 };
 
-async function shortPolling(buildId, retries = 0, options) {
-    await axios.get(new URL('?buildId=' + buildId, constants[options.env].BUILD_STATUS_URL).href, {
-        headers: {
-            projectToken: process.env.PROJECT_TOKEN
-        }})
-        .then(function (response) {
-            if (response.data) {
-                if (response.data.buildStatus === 'completed') {
-                    console.log('[smartui] Build successful\n');
-                    console.log('[smartui] Build details:\n',
-                        'Build URL: ', response.data.buildURL, '\n',
-                        'Build Name: ', response.data.buildName, '\n',
-                        'Total Screenshots: ', response.data.totalScreenshots, '\n',
-                        'Approved: ', response.data.buildResults.approved, '\n',
-                        'Changes found: ', response.data.buildResults.changesFound, '\n'
-                    );
-                    
-                    if (response.data.screenshots && response.data.screenshots.length > 0) {
-                        import('chalk').then((chalk) => {
-                            const table = new Table({
-                                head: [
-                                    {content: chalk.default.white('Story'), hAlign: 'center'},
-                                    {content: chalk.default.white('Mis-match %'), hAlign: 'center'},
-                                ]
-                            });
-                            response.data.screenshots.forEach(screenshot => {
-                                let mismatch = screenshot.mismatchPercentage
-                                table.push([
-                                    chalk.default.yellow(screenshot.storyName),
-                                    mismatch > 0 ? chalk.default.red(mismatch) : chalk.default.green(mismatch)
-                                ])
-                            });
-                            console.log(table.toString());
-                        })
-                    } else {
-                        if (response.data.baseline) {
-                            console.log('No comparisons run. This is a baseline build.');
-                        } else {
-                            console.log('No comparisons run. No screenshot in the current build has the corresponding screenshot in baseline build.');
-                        }
-                    }
-                    return;
-                } else {
-                    if (response.data.screenshots && response.data.screenshots.length > 0) {
-                        // TODO: show Screenshots processed current/total 
-                        console.log('[smartui] Screenshots compared: ', response.data.screenshots.length)
-                    }
-                }
-            }
-            
-            // Double the INTERVAL, up to the maximum INTERVAL of 512 secs (so ~15 mins in total)
-            INTERVAL = Math.min(INTERVAL * 2, MAX_INTERVAL);
-            if (INTERVAL == MAX_INTERVAL) {
-                console.log('[smartui] Please check the build status on LambdaTest SmartUI.');
-                return;
-            }
+async function fetchDOM(screenshots, options, logger) {
+    logger.debug("fetchDOM started")
+    const createBrowser = require('browserless')
+    const browser = createBrowser()
 
-            setTimeout(function () {
-                shortPolling(buildId, 0, options)
-            }, INTERVAL);
-        })
-        .catch(function (error) {
-            if (retries >= 3) {
-                console.log('[smartui] Error: Failed getting build status.', error.message);
-                console.log('[smartui] Please check the build status on LambdaTest SmartUI.');
-                return;
+    if (!fs.existsSync('doms')) {
+        fs.mkdir('doms', (err) => {
+            if (err) {
+                logger.error(err);
+                process.exit(constants.ERROR_CATCHALL);
             }
-
-            setTimeout(function () {
-                shortPolling(buildId, retries+1, options);
-            }, 2000);
         });
-};
+    }
+
+    //TODO: Make this async
+    for (const screenshot of screenshots) {
+        logger.debug(screenshot)
+        let id = generateId(screenshot.name)
+        logger.debug(id)
+        screenshot.id = id
+        const browserless = await browser.createContext()
+
+        const options = {};
+        if(screenshot.waitForTimeout){
+            options.waitForTimeout = screenshot.waitForTimeout
+        }
+        logger.debug(options)
+        logger.info('Navigate URL :'+ screenshot.url)
+        const html = await browserless.html(screenshot.url,options)
+
+        let dom = new JSDOM(html, {
+            url: screenshot.url,
+            resources: 'usable'
+        });
+        let clone = new JSDOM(html);
+
+        // Serialize DOM
+        for (element of clone.window.document.querySelectorAll('img')) {
+            try {
+                let host = hostname(screenshot.url);
+                let image = new URL(element.getAttribute('src'), `https://${host}`).href;
+                element.setAttribute('src', image);
+            } catch (e) {
+                logger.error(e);
+            }
+        }
+
+        try {
+            logger.debug("Creating CSS DOM")
+            await serializeCSSOM(dom, clone);
+            fs.writeFileSync(`doms/${id}.html`, clone.serialize());
+        } catch (err) {
+            logger.error("serializeCSSOM error");
+            logger.error(err);
+        }
+        await browserless.destroyContext();
+        //Async upload
+        // upload(id, screenshot, options);
+    }
+    await browser.close()
+}
 
 function getBase64(url) {
     return axios.get(url, {
-            responseType: "text",
-            responseEncoding: "base64",
-        })
+        responseType: "text",
+        responseEncoding: "base64",
+    })
         .then(response => response.data)
         .catch(function (error) {
-            console.log('[smartui] Error: ', error.message);
-            process.exit(0);
+            console.log('[smartui] getBase64 Error: ', error.message);
+            process.exit(constants.ERROR_CATCHALL);
         });
 }
 
@@ -193,4 +187,15 @@ async function serializeCSSOM(dom, clone) {
     });
 }
 
-module.exports = { sendDoM };
+// Returns the hostname portion of a URL.
+function hostname(url) {
+    return new URL(url).hostname;
+}
+
+function generateId(str) {
+    const lowercaseStr = str.toLowerCase();
+    const noSpacesStr = lowercaseStr.replace(/\s/g, '-');
+    return noSpacesStr;
+}
+
+module.exports = { sendDoM, fetchDOM };
