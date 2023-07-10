@@ -4,7 +4,7 @@ function cleanup(logger) {
     logger.debug("cleanup initiated")
     fs.rm('doms', { recursive: true }, (err) => {
         if (err) {
-            return logger.error(err);
+            // return logger.error(err);
         }
     });
     return true

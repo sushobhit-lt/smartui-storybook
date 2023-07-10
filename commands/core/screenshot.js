@@ -4,7 +4,7 @@ const { getLastCommit } = require('../utils/git')
 const { default: axios } = require('axios')
 var { constants } = require('../utils/constants');
 const { shortPolling } = require('../utils/polling');
-const { cleanFile } = require('../utils/cleanup')
+const { cleanFile ,cleanup} = require('../utils/cleanup')
 
 const formData = require('form-data');
 const fs = require('fs');
@@ -178,6 +178,9 @@ async function upload(screenshot, build, options, logger, payload) {
     form.append('buildId', build.buildId);
     form.append('buildName', build.buildName);
     form.append('screenshotName', screenshot.name);
+    if (build.baseline) {
+        form.append('baseline', "true");
+    }
     if (payload && payload.completed) {
         form.append('completed', "true");
     }
@@ -197,6 +200,7 @@ async function upload(screenshot, build, options, logger, payload) {
         if (payload && payload.completed) {
             logger.info('[smartui] Build URL: ' + response.data.buildURL);
             logger.info('[smartui] Build in progress...');
+            cleanup(logger);
             await shortPolling(response.data.buildId, 0, options);
         }
     }).catch(function (error) {
