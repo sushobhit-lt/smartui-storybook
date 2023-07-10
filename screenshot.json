@@ -1,0 +1,15 @@
+[
+  {
+    "name": "docs",
+    "url": "https://www.lambdatest.com/support/docs/smart-visual-regression-testing/",
+    "waitForTimeout": 1000
+  },
+  {
+    "name": "lambdatest-home-page",
+    "url": "https://www.lambdatest.com"
+  },
+  {
+    "name": "example-page",
+    "url": "https://example.com/"
+  }
+]

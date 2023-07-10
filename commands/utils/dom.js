@@ -120,7 +120,13 @@ async function fetchDOM(screenshots, options, logger) {
         screenshot.id = id
         const browserless = await browser.createContext()
 
-        const html = await browserless.html(screenshot.url)
+        const options = {};
+        if(screenshot.waitForTimeout){
+            options.waitForTimeout = screenshot.waitForTimeout
+        }
+        logger.debug(options)
+        logger.info('Navigate URL :'+ screenshot.url)
+        const html = await browserless.html(screenshot.url,options)
 
         let dom = new JSDOM(html, {
             url: screenshot.url,
@@ -144,6 +150,7 @@ async function fetchDOM(screenshots, options, logger) {
             await serializeCSSOM(dom, clone);
             fs.writeFileSync(`doms/${id}.html`, clone.serialize());
         } catch (err) {
+            logger.error("serializeCSSOM error");
             logger.error(err);
         }
         await browserless.destroyContext();
@@ -191,46 +198,4 @@ function generateId(str) {
     return noSpacesStr;
 }
 
-async function upload(screenshots, options,logger) {
-    // Create form
-    let commit = await getLastCommit();
-    const form = new formData();
-    logger.info("Upload screenshot started")
-    logger.debug(screenshots)
-    for (const screenshot of screenshots) {
-        const file = fs.readFileSync(`doms/${screenshot.id}.html`);
-        form.append('files', file, `${screenshot.name}.html`);
-    }
-    form.append('resolution', constants.ALL);
-    form.append('browser', constants.ALL);
-    form.append('projectToken', process.env.PROJECT_TOKEN);
-    form.append('branch', commit.branch);
-    form.append('commitId', commit.shortHash);
-    form.append('commitAuthor', commit.author.name);
-    form.append('commitMessage', commit.subject);
-    form.append('fullPage', "true");
-
-
-    githubURL = process.env.GITHUB_URL
-    if (githubURL) {
-        form.append('githubURL', githubURL);
-    }
-
-    // Send DOM to render API
-    await axios.post(constants[options.env].RENDER_API_URL, form, {
-        headers: {
-            ...form.getHeaders()
-        }
-    }).then(async function (response) {
-        logger.info('[smartui] Build URL: '+ response.data.buildURL);
-        logger.info('[smartui] Build in progress...');
-        await shortPolling(response.data.buildId, 0, options);
-    }).catch(function (error) {
-        if (error.response) {
-            logger.error('[smartui] Build failed: Error: '+ error.response.data.message);
-        } else {
-            logger.error('[smartui] Build failed: Error: '+ error.message);
-        }
-    });
-}
-module.exports = { sendDoM, fetchDOM, upload };
+module.exports = { sendDoM, fetchDOM };
