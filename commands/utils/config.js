@@ -26,4 +26,19 @@ const defaultScreenshotConfig = [
     }
 ]
 
-module.exports = { defaultSmartUIConfig, defaultScreenshotConfig }
+const defaultSmartUIWebConfig = {
+    web: {
+        browsers: [
+            'chrome',
+            'firefox',
+            'safari',
+            'edge'
+        ],
+        resolutions: [
+            [1920, 1080]
+        ],
+        include: [],
+        exclude: []
+    }
+};
+module.exports = { defaultSmartUIConfig, defaultScreenshotConfig, defaultSmartUIWebConfig }

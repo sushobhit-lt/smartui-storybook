@@ -4,10 +4,12 @@ const { getLastCommit } = require('../utils/git')
 const { default: axios } = require('axios')
 var { constants } = require('../utils/constants');
 const { shortPolling } = require('../utils/polling');
+const { cleanFile } = require('../utils/cleanup')
+
 const formData = require('form-data');
 const fs = require('fs');
-
-
+const { defaultSmartUIWebConfig } = require('../utils/config')
+const EDGE_CHANNEL = 'msedge';
 
 async function screenshot(screenshots, options, logger) {
     logger.debug("process screenshot started")
@@ -48,7 +50,7 @@ async function createBuild(options, logger) {
 
     return (await axios.post(new URL(constants[options.env].CREATE_BUILD_PATH, constants[options.env].BASE_URL).href, payload)
         .then(async function (response) {
-            logger.info('Build Created '+ response);
+            logger.info('Build Created ' + response);
             return response
         })
         .catch(function (error) {
@@ -69,28 +71,52 @@ async function createBuild(options, logger) {
 async function captureScreenshots(screenshot, build, options, logger) {
     logger.debug("captureScreenshots")
     try {
-        const browserTypes = ['chromium', 'firefox'];
-        const viewports = [
-            { width: 360, height: 640 },
-            { width: 1366, height: 768 },
-            { width: 1920, height: 1080 }
-        ];
+        const browsers = [];
+        const viewports = [];
+
+        let webConfig = options.config ? options.config : defaultSmartUIWebConfig.web;
+
+        webConfig.browsers.forEach(element => {
+            browsers.push(element.toLowerCase());
+        });
+
+        webConfig.resolutions.forEach(element => {
+            viewports.push({ width: element[0], height: element[1] });
+        });
+        logger.info(browsers)
+        logger.info(viewports)
 
         logger.info("Navigate URL : " + screenshot.url)
+       
+        for (const browserName of browsers) {
+            logger.info("Processing for browser : " + browserName)
+            let btype;
+            let launchOptions = { headless: true };
+            if (browserName == "chrome") {
+                btype = "chromium";
+            } else if (browserName == "safari") {
+                btype = "webkit";
+            } else if (browserName == "edge") {
+                btype = "chromium";
+                launchOptions.channel = EDGE_CHANNEL;
+            } else {
+                btype = browserName;
+            }
 
-        for (const browserType of browserTypes) {
-            const browser = await playwright[browserType].launch();
+            logger.debug(launchOptions)
+            const browser = await playwright[btype].launch(launchOptions);
             const context = await browser.newContext();
             const page = await context.newPage();
+            logger.debug("waitForTimeout : " + screenshot.waitForTimeout)
 
             await page.goto(screenshot.url);
             let lastBrowser = false
-            if (browserTypes.indexOf(browserType) === browserTypes.length - 1) {
+            if (browsers.indexOf(browserName) === browsers.length - 1) {
                 lastBrowser = true
             }
 
             if (screenshot.waitForTimeout) {
-                logger.info("waitForTimeout : " + screenshot.waitForTimeout)
+                logger.debug("waitForTimeout : " + screenshot.waitForTimeout)
                 // Add the wait timeout
                 await page.waitForTimeout(screenshot.waitForTimeout);
             }
@@ -104,18 +130,19 @@ async function captureScreenshots(screenshot, build, options, logger) {
 
                 await page.setViewportSize(viewport);
                 const { width, height } = viewport;
-                const spath = `doms/${screenshot.id}/${browserType}-${width}x${height}-${screenshot.id}.png`
+                const spath = `doms/${screenshot.id}/${browserName}-${width}x${height}-${screenshot.id}.png`
                 await page.screenshot({ path: spath, fullPage: true });
 
-                options.spath = spath
-                options.browser = browserType
-                options.resolution = `${width}x${height}`
-                let completed = false;
+                let payload = {
+                    spath : spath,
+                    browser: browserName,
+                    resolution: `${width}x${height}`
+                }
                 if (lastViewport && lastBrowser && options.lastScreenshot) {
-                    completed = true;
+                    payload.completed = true;
                 }
 
-                upload(screenshot, build, options, logger, completed)
+                upload(screenshot, build, options, logger, payload)
             }
 
             await browser.close();
@@ -134,28 +161,24 @@ function generateId(str) {
 }
 
 
-async function upload(screenshot, build, options, logger, completed) {
+async function upload(screenshot, build, options, logger, payload) {
     // Create form
-    if (options.browser == "chromium") {
-        options.browser = "chrome";
-    }
-
     const form = new formData();
-    logger.info("Upload screenshot started")
+    logger.debug("Upload screenshot started")
     logger.debug(screenshot)
-    logger.debug(options)
+    logger.debug(payload)
 
 
-    const file = fs.readFileSync(options.spath);
+    const file = fs.readFileSync(payload.spath);
     form.append('screenshots', file, `${screenshot.name}.png`);
 
     form.append('projectToken', process.env.PROJECT_TOKEN);
-    form.append('browser', options.browser);
-    form.append('resolution', options.resolution);
+    form.append('browser', payload.browser);
+    form.append('resolution', payload.resolution);
     form.append('buildId', build.buildId);
     form.append('buildName', build.buildName);
     form.append('screenshotName', screenshot.name);
-    if (completed) {
+    if (payload && payload.completed) {
         form.append('completed', "true");
     }
 
@@ -167,10 +190,11 @@ async function upload(screenshot, build, options, logger, completed) {
         logger.debug("uploaded success");
         logger.debug(response.data)
         if (response.data) {
-            logger.info("Screenshot uploaded")
+            logger.debug("Screenshot uploaded")
+            cleanFile(logger,payload.spath)
         }
 
-        if (completed) {
+        if (payload && payload.completed) {
             logger.info('[smartui] Build URL: ' + response.data.buildURL);
             logger.info('[smartui] Build in progress...');
             await shortPolling(response.data.buildId, 0, options);

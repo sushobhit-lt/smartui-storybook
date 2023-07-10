@@ -70,8 +70,8 @@ program.command('capture <file>')
         const logger = await setupLogger();
         logger.info('SmartUI Storybook CLI v' + version);
         logger.info('\n');
-        validateScreenshotConfig(file,logger);
-
+        options.config = validateScreenshotConfig(file,logger);
+        logger.debug(options.config);
         screenshots = parse(file);
         logger.debug(screenshots);
         options.env = program.opts().env || 'prod';

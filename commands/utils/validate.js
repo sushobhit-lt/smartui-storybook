@@ -18,7 +18,7 @@ class ValidationError extends Error {
 }
 
 function validateProjectToken(options, logger) {
-    logger.debug("options", options);
+    logger.debug(options);
     if (process.env.PROJECT_TOKEN) {
         return axios.get(constants[options.env].AUTH_URL, {
             headers: {
@@ -246,6 +246,35 @@ function validateScreenshotConfig(configFile, logger) {
             logger.error('Error: Invalid screenshot URL: '+screenshot.url);
             process.exit(constants.ERROR_CATCHALL);
         }
+    }
+
+    //Check for .smartui.json
+    smartuiFile = ".smartui.json"
+     // Verify config file exists
+     if (!fs.existsSync(smartuiFile)) {
+        logger.error(`[smartui] Error: Config file ${smartuiFile} not found, will use default configs`);
+        return
+    }
+
+    // Parse JSON
+    let webConfig;
+    try {
+        webConfig = JSON.parse(fs.readFileSync(smartuiFile)).web;
+    } catch (error) {
+        logger.error('[smartui] Error: ', error.message);
+        process.exit(constants.ERROR_CATCHALL);
+    }
+    if (webConfig){
+        try {
+            validateConfigBrowsers(webConfig.browsers);
+            webConfig.resolutions = validateConfigResolutions(webConfig.resolutions);
+        } catch (error) {
+            logger.error(`[smartui] Error: Invalid config, ${error.message}`);
+            process.exit(constants.ERROR_CATCHALL);
+        }
+        return webConfig
+    } else {
+        logger.error(`[smartui] No webConfig found in ${smartuiFile} file, will use default configs`);
     }
 }
 
