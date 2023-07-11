@@ -83,13 +83,13 @@ async function captureScreenshots(screenshot, build, options, logger) {
         webConfig.resolutions.forEach(element => {
             viewports.push({ width: element[0], height: element[1] });
         });
-        logger.info(browsers)
-        logger.info(viewports)
+        logger.debug(browsers)
+        logger.debug(viewports)
 
         logger.info("Navigate URL : " + screenshot.url)
        
         for (const browserName of browsers) {
-            logger.info("Processing for browser : " + browserName)
+            logger.debug("Processing for browser : " + browserName)
             let btype;
             let launchOptions = { headless: true };
             if (browserName == "chrome") {
