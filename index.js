@@ -37,7 +37,7 @@ configCommand.command('screenshot')
     .argument('[filepath]', 'Optional config filepath')
     .action(async function(filepath, options) {
         const logger = await setupLogger();
-        logger.info('SmartUI Storybook CLI v' + version);
+        logger.info('SmartUI Config Screenshot CLI v' + version);
         logger.info('\n');
         createScreenshotConfig(filepath, logger);
     });
@@ -68,7 +68,7 @@ program.command('capture <file>')
     .option('-c --config <file>', 'Config file path')
     .action(async (file, options) => {
         const logger = await setupLogger();
-        logger.info('SmartUI Storybook CLI v' + version);
+        logger.info('SmartUI Capture CLI v' + version);
         logger.info('\n');
         options.config = validateScreenshotConfig(file,logger);
         logger.debug(options.config);
