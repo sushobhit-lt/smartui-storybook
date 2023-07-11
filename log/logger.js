@@ -26,7 +26,7 @@ const setupLogger = async () => {
         }
         switch (level) {
           case 'info':
-            colorizedMessage = chalk.black(message);
+            colorizedMessage = message;
             break;
           case 'debug':
               colorizedMessage = chalk.blue(message);
