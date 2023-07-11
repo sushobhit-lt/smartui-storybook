@@ -201,7 +201,7 @@ function parse(file) {
 }
 
 // Verify Screenshot config 
-function validateScreenshotConfig(configFile, logger) {
+function validateScreenshotConfig(configFile, options, logger) {
     // Check for JSON extension
     if (!isJSONFile(configFile)) {
         logger.error('capture command only supports json file');
@@ -235,7 +235,7 @@ function validateScreenshotConfig(configFile, logger) {
 
     //Check for URLs should not be empty
     for (const screenshot of screenshots) {
-        if(!screenshot.url || screenshot.url == ''){
+        if (!screenshot.url || screenshot.url == '') {
             logger.error('Error: Missing required URL for screenshot');
             process.exit(constants.ERROR_CATCHALL);
         }
@@ -243,38 +243,38 @@ function validateScreenshotConfig(configFile, logger) {
         try {
             new URL(screenshot.url);
         } catch (error) {
-            logger.error('Error: Invalid screenshot URL: '+screenshot.url);
+            logger.error('Error: Invalid screenshot URL: ' + screenshot.url);
             process.exit(constants.ERROR_CATCHALL);
         }
     }
 
-    //Check for .smartui.json
-    smartuiFile = ".smartui.json"
-     // Verify config file exists
-     if (!fs.existsSync(smartuiFile)) {
-        logger.error(`[smartui] Error: Config file ${smartuiFile} not found, will use default configs`);
+    //Check for smartui-web.json
+    let webConfigFile = options.config ||  "smartui-web.json"
+    // Verify config file exists
+    if (!fs.existsSync(webConfigFile)) {
+        logger.error(`[smartui] Error: Config file ${webConfigFile} not found, will use default configs`);
         return
     }
 
     // Parse JSON
     let webConfig;
     try {
-        webConfig = JSON.parse(fs.readFileSync(smartuiFile)).web;
+        webConfig = JSON.parse(fs.readFileSync(webConfigFile)).web;
     } catch (error) {
         logger.error('[smartui] Error: ', error.message);
         process.exit(constants.ERROR_CATCHALL);
     }
-    if (webConfig){
+    if (webConfig) {
         try {
             validateConfigBrowsers(webConfig.browsers);
             webConfig.resolutions = validateConfigResolutions(webConfig.resolutions);
         } catch (error) {
-            logger.error(`[smartui] Error: Invalid config, ${error.message}`);
+            logger.error(`[smartui] Error: Invalid webConfig, ${error.message}`);
             process.exit(constants.ERROR_CATCHALL);
         }
         return webConfig
     } else {
-        logger.error(`[smartui] No webConfig found in ${smartuiFile} file, will use default configs`);
+        logger.error(`[smartui] No webConfig found in ${webConfigFile} file, will use default configs`);
     }
 }
 

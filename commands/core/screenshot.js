@@ -86,7 +86,7 @@ async function captureScreenshots(screenshot, build, options, logger) {
         logger.debug(browsers)
         logger.debug(viewports)
 
-        logger.info("Navigate URL : " + screenshot.url)
+        logger.info("Navigating URL : " + screenshot.url)
        
         for (const browserName of browsers) {
             logger.debug("Processing for browser : " + browserName)

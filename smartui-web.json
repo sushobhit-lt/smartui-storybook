@@ -1,0 +1,18 @@
+{
+  "web": {
+    "browsers": [
+      "chrome",
+      "firefox",
+      "safari",
+      "edge"
+    ],
+    "resolutions": [
+      [
+        1920,
+        1080
+      ]
+    ],
+    "include": [],
+    "exclude": []
+  }
+}
