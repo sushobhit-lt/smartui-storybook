@@ -4,7 +4,7 @@ const { Command, Option } = require('commander');
 const program = new Command();
 const { storybook } = require('./commands/storybook');
 const { validateProjectToken, validateLatestBuild, validateConfig, parse, validateScreenshotConfig } = require('./commands/utils/validate');
-const { createConfig, createScreenshotConfig } = require('./commands/config');
+const { createConfig, createWebStaticConfig, createWebConfig } = require('./commands/config');
 const { version } = require('./package.json');
 const { checkUpdate } = require('./commands/utils/package');
 const { capture } = require('./commands/capture');
@@ -22,24 +22,34 @@ const configCommand = program.command('config')
 configCommand.command('create')
     .description('Create LambdaTest SmartUI config file')
     .argument('[filepath]', 'Optional config filepath')
-    .action(async function(filepath, options) {
+    .action(async function (filepath, options) {
         const logger = await setupLogger();
         logger.info('SmartUI Storybook CLI v' + version);
         logger.info('\n');
         options.env = program.opts().env || 'prod';
         await checkUpdate(version, options, logger);
 
-        createConfig(filepath,logger);
+        createConfig(filepath, logger);
     });
 
-configCommand.command('screenshot')
-    .description('Create Screenshot config file')
+program.command('config:create-web')
+    .description('Create SmartUI Web config file')
     .argument('[filepath]', 'Optional config filepath')
-    .action(async function(filepath, options) {
+    .action(async function (filepath, options) {
         const logger = await setupLogger();
-        logger.info('SmartUI Config Screenshot CLI v' + version);
+        logger.info('SmartUI Config CLI v' + version);
         logger.info('\n');
-        createScreenshotConfig(filepath, logger);
+        createWebConfig(filepath, logger);
+    });
+
+program.command('config:web-static')
+    .description('Create Web Static config file')
+    .argument('[filepath]', 'Optional config filepath')
+    .action(async function (filepath, options) {
+        const logger = await setupLogger();
+        logger.info('SmartUI Config CLI v' + version);
+        logger.info('\n');
+        createWebStaticConfig(filepath, logger);
     });
 
 program.command('storybook')
@@ -47,7 +57,7 @@ program.command('storybook')
     .argument('<url|directory>', 'Storybook url or static build directory')
     .option('-c --config <file>', 'Config file path')
     .option('--force-rebuild', 'Force a rebuild of an already existing build.', false)
-    .action(async function(serve, options) {
+    .action(async function (serve, options) {
         options.env = program.opts().env || 'prod';
         const logger = await setupLogger();
         console.log('SmartUI Storybook CLI v' + version);
@@ -70,13 +80,14 @@ program.command('capture <file>')
         const logger = await setupLogger();
         logger.info('SmartUI Capture CLI v' + version);
         logger.info('\n');
-        options.config = validateScreenshotConfig(file,logger);
+        logger.debug(options)
+        options.config = validateScreenshotConfig(file, options, logger);
         logger.debug(options.config);
         screenshots = parse(file);
         logger.debug(screenshots);
         options.env = program.opts().env || 'prod';
         //verify PROJECT_TOKEN
-        await validateProjectToken(options,logger);
+        await validateProjectToken(options, logger);
         await capture(screenshots, options, logger);
     });
 
